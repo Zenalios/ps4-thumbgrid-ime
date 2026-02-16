@@ -1,0 +1,23 @@
+# Build artifacts
+build/
+bin/
+*.o
+*.elf
+*.oelf
+*.prx
+
+# Debug/log files
+*.txt
+!README.md
+
+# Dev artifacts
+*.zip
+CLAUDE.md
+.claude/
+
+# Editor/IDE
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
