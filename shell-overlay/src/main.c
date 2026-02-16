@@ -184,7 +184,8 @@ static const char *LM_NS_CANDIDATES[] = {
 #define STATUS_GAP       10.0f    /* Gap between grid and status */
 #define DONE_W          160.0f    /* Wide enough for "R2 Done" */
 #define DONE_H           42.0f    /* Tall enough for text + padding */
-#define L2_W            160.0f    /* Wide enough for "L2 Caps" */
+#define L2_W            160.0f    /* Wide enough for "L2 Shift" */
+#define L3_W            160.0f    /* Wide enough for "L3 á" */
 
 /* Computed sizes */
 #define GRID_3x3_W     (CELL_W * 3 + CELL_GAP * 2)
@@ -239,7 +240,9 @@ static MonoObject *g_text_label      = NULL;
 static MonoObject *g_status_label    = NULL;
 static MonoObject *g_done_panel      = NULL;  /* Cyan "Done" button */
 static MonoObject *g_done_label      = NULL;
-static MonoObject *g_l2_panel        = NULL;  /* Grey "L2 Caps" button */
+static MonoObject *g_l3_panel        = NULL;  /* Grey "L3 á" button */
+static MonoObject *g_l3_label        = NULL;
+static MonoObject *g_l2_panel        = NULL;  /* Grey "L2 ⇧" button */
 static MonoObject *g_l2_label        = NULL;
 static MonoObject *g_cell_panels[9]        = {NULL};
 static MonoObject *g_cell_btn_labels[9][4] = {{NULL}};  /* [cell][button] */
@@ -839,7 +842,7 @@ static void set_label_color(MonoObject *label, float r, float g, float b, float 
 #define COL_DONE_B          0.70f
 #define COL_DONE_A          1.00f
 
-#define COL_L2_R            0.35f   /* Grey "L2 Caps" button */
+#define COL_L2_R            0.35f   /* Grey "L2 Shift" button */
 #define COL_L2_G            0.35f
 #define COL_L2_B            0.38f
 #define COL_L2_A            1.00f
@@ -1114,18 +1117,43 @@ static bool build_widget_tree(MonoObject *root) {
     }
     cur_y += GRID_3x3_H + STATUS_GAP;
 
-    /* ── 6. Status bar: [abc] label on left, L2 Caps + R2 Done buttons on right ── */
+    /* ── 6. Status bar: [abc] on left, L3/L2/R2 buttons on right ── */
     g_status_label = create_label("[abc]");
     if (g_status_label) {
         set_widget_pos(g_status_label, content_left, cur_y,
-                       inner_w - DONE_W - L2_W - 16.0f, STATUS_BAR_H);
+                       inner_w - DONE_W - L2_W - L3_W - 24.0f, STATUS_BAR_H);
         set_label_color(g_status_label,
                         COL_DIM_R, COL_DIM_G, COL_DIM_B, COL_DIM_A);
         set_label_valign(g_status_label, 1);  /* Center vertically */
         add_child(g_grid_panel, g_status_label);
     }
 
-    /* ── 7. "L2 Caps" grey button ── */
+    /* ── 7a. "L3 á" grey button ── */
+    g_l3_panel = create_panel();
+    if (g_l3_panel) {
+        float l3_x = content_left + inner_w - DONE_W - L2_W - L3_W - 16.0f;
+        float l3_y = cur_y + (STATUS_BAR_H - DONE_H) / 2.0f;
+        set_widget_pos(g_l3_panel, l3_x, l3_y, L3_W, DONE_H);
+        set_panel_bg(g_l3_panel,
+                     COL_L2_R, COL_L2_G, COL_L2_B, COL_L2_A);
+        add_child(g_grid_panel, g_l3_panel);
+    }
+    g_l3_label = create_label("L3 \xC3\xA1");
+    if (g_l3_label) {
+        float l3_x = content_left + inner_w - DONE_W - L2_W - L3_W - 16.0f;
+        float l3_y = cur_y + (STATUS_BAR_H - DONE_H) / 2.0f;
+        set_widget_pos(g_l3_label, l3_x, l3_y, L3_W, DONE_H);
+        set_label_color(g_l3_label,
+                        COL_TEXT_R, COL_TEXT_G, COL_TEXT_B, COL_TEXT_A);
+        set_label_halign(g_l3_label, 1);
+        set_label_valign(g_l3_label, 1);
+        if (g_cls_widget)
+            set_bool_prop(g_cls_widget, g_l3_label,
+                          "IsFontWeightEnhanced", true);
+        add_child(g_grid_panel, g_l3_label);
+    }
+
+    /* ── 7b. "L2 ⇧" grey button ── */
     g_l2_panel = create_panel();
     if (g_l2_panel) {
         float l2_x = content_left + inner_w - DONE_W - L2_W - 8.0f;
@@ -1135,7 +1163,7 @@ static bool build_widget_tree(MonoObject *root) {
                      COL_L2_R, COL_L2_G, COL_L2_B, COL_L2_A);
         add_child(g_grid_panel, g_l2_panel);
     }
-    g_l2_label = create_label("L2  Shift");
+    g_l2_label = create_label("L2 \xE2\x87\xA7");
     if (g_l2_label) {
         float l2_x = content_left + inner_w - DONE_W - L2_W - 8.0f;
         float l2_y = cur_y + (STATUS_BAR_H - DONE_H) / 2.0f;
@@ -1419,12 +1447,23 @@ static void update_widgets(const ThumbGridSharedState *state) {
     if (state->shift_active != g_cached_state.shift_active) {
         if (g_l2_panel) {
             if (state->shift_active) {
-                /* L2 held → cyan highlight (match Done button) */
                 set_panel_bg(g_l2_panel,
                              COL_DONE_R, COL_DONE_G, COL_DONE_B, COL_DONE_A);
             } else {
-                /* L2 released → grey */
                 set_panel_bg(g_l2_panel,
+                             COL_L2_R, COL_L2_G, COL_L2_B, COL_L2_A);
+            }
+        }
+    }
+
+    /* Update L3 button highlight when accent mode changes */
+    if (state->accent_mode != g_cached_state.accent_mode) {
+        if (g_l3_panel) {
+            if (state->accent_mode) {
+                set_panel_bg(g_l3_panel,
+                             COL_DONE_R, COL_DONE_G, COL_DONE_B, COL_DONE_A);
+            } else {
+                set_panel_bg(g_l3_panel,
                              COL_L2_R, COL_L2_G, COL_L2_B, COL_L2_A);
             }
         }
@@ -1464,7 +1503,7 @@ static void update_widgets(const ThumbGridSharedState *state) {
         }
     }
 
-    /* Update status bar — just show page name */
+    /* Update status bar — page name */
     if (state->current_page != g_cached_state.current_page ||
         memcmp(state->page_name, g_cached_state.page_name,
                TG_IPC_PAGE_NAME_MAX) != 0) {

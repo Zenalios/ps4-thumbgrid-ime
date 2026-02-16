@@ -492,11 +492,11 @@ void thumbgrid_draw(const ThumbGridState *state, const struct ImeSession *sessio
     overlay_draw_rect(fb, pitch, base_x + 4, page_y,
                       OVL_TOTAL_W - 8, PAGE_BAR_H, COL_BG_BAR);
 
-    char page_str[48];
+    char page_str[64];
     if (state->accent_mode) {
-        snprintf(page_str, sizeof(page_str), "[%s] ACC  L2:shift  R2:done", page->name);
+        snprintf(page_str, sizeof(page_str), "[%s] ACC  L3:a'  L2:shift  R2:done", page->name);
     } else {
-        snprintf(page_str, sizeof(page_str), "[%s]  L2:shift  R2:done", page->name);
+        snprintf(page_str, sizeof(page_str), "[%s]  L3:a'  L2:shift  R2:done", page->name);
     }
     overlay_draw_text(fb, pitch, base_x + 8, page_y + 9, page_str,
                       COL_TEXT, COL_BG_BAR);
