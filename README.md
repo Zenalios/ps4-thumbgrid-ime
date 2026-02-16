@@ -2,6 +2,10 @@
 
 A custom Input Method Editor (IME) for PlayStation 4, replacing the system on-screen keyboard with a compact 3x3 grid interface controlled entirely via the DualShock 4 controller. Built as a [GoldHEN](https://github.com/GoldHEN/GoldHEN) plugin.
 
+## Demo
+
+https://github.com/Zenalios/ps4-thumbgrid-ime/raw/main/ps4-thumbgrid-ime-demo.mp4
+
 ## Overview
 
 When a PS4 game opens a text input dialog (`sceImeDialogInit`), this plugin intercepts it and presents a ThumbGrid — a 3x3 cell grid navigated with the analog stick — instead of Sony's default keyboard. Face buttons (Triangle, Circle, Cross, Square) input the character shown at that position in the selected cell.
