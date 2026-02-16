@@ -1,6 +1,6 @@
 /**
  * @file input.c
- * @brief PS4 controller input processing for XTI grid input
+ * @brief PS4 controller input processing for ThumbGrid input
  */
 
 #include "plugin_common.h"

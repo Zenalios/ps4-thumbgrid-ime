@@ -2,7 +2,7 @@
  * @file ime_hook.c
  * @brief IME Dialog function hooking implementation
  *
- * Phase 3: XTI grid input with framebuffer overlay.
+ * Phase 3: ThumbGrid grid input with framebuffer overlay.
  * Analog stick selects cell, face buttons input characters.
  * Overlay renders via sceVideoOutSubmitFlip hook.
  * Falls back to notification display if overlay framebuffers unavailable.
@@ -16,9 +16,9 @@
 #include "ime_hook.h"
 #include "ime_custom.h"
 #include "input.h"
-#include "xti.h"
+#include "thumbgrid.h"
 #include "overlay.h"
-#include "xti_ipc.h"
+#include "thumbgrid_ipc.h"
 
 #include <Detour.h>
 #include <GoldHEN.h>
@@ -41,7 +41,7 @@
 
 static ImeHookState g_hook_state;
 static ImeSession   g_session;
-static XtiState     g_xti;
+static ThumbGridState     g_tgrid;
 static bool         g_custom_active = false;
 
 /* Pad management */
@@ -81,7 +81,7 @@ static bool     g_l3_prev          = false;
 
 /* ─── IPC Shared Memory ──────────────────────────────────────────── */
 
-static volatile XtiSharedState *g_ipc_map  = NULL;
+static volatile ThumbGridSharedState *g_ipc_map  = NULL;
 static int                      g_ipc_fd   = -1;
 
 #define BS_INITIAL_DELAY_US   400000   /* 400ms before first repeat */
@@ -127,9 +127,9 @@ static bool ipc_open(void) {
     /* Try multiple paths — /user/data/ first since it's shared across
      * process sandboxes (game and SceShellUI can both access it) */
     static const char *ipc_paths[] = {
-        "/user/data/xti_ipc.bin",
-        "/data/xti_ipc.bin",
-        "/tmp/xti_ipc.bin",
+        "/user/data/thumbgrid_ipc.bin",
+        "/data/thumbgrid_ipc.bin",
+        "/tmp/thumbgrid_ipc.bin",
         NULL
     };
 
@@ -149,15 +149,15 @@ static bool ipc_open(void) {
         return false;
     }
 
-    /* Extend file to XTI_IPC_FILE_SIZE */
+    /* Extend file to TG_IPC_FILE_SIZE */
     char zero = 0;
-    sceKernelLseek(g_ipc_fd, XTI_IPC_FILE_SIZE - 1, 0 /* SEEK_SET */);
+    sceKernelLseek(g_ipc_fd, TG_IPC_FILE_SIZE - 1, 0 /* SEEK_SET */);
     sceKernelWrite(g_ipc_fd, &zero, 1);
     sceKernelLseek(g_ipc_fd, 0, 0);
 
     /* mmap shared */
     void *addr = NULL;
-    int rc = sceKernelMmap(0, XTI_IPC_FILE_SIZE,
+    int rc = sceKernelMmap(0, TG_IPC_FILE_SIZE,
                            PROT_READ | PROT_WRITE,
                            MAP_SHARED, g_ipc_fd, 0, &addr);
     if (rc < 0 || addr == MAP_FAILED || !addr) {
@@ -167,8 +167,8 @@ static bool ipc_open(void) {
         return false;
     }
 
-    g_ipc_map = (volatile XtiSharedState *)addr;
-    memset((void *)g_ipc_map, 0, sizeof(XtiSharedState));
+    g_ipc_map = (volatile ThumbGridSharedState *)addr;
+    memset((void *)g_ipc_map, 0, sizeof(ThumbGridSharedState));
     LOG_INFO("IPC: mapped at %p (fd=%d)", addr, g_ipc_fd);
     return true;
 }
@@ -176,11 +176,11 @@ static bool ipc_open(void) {
 static void ipc_close(void) {
     if (g_ipc_map) {
         /* Signal inactive before unmapping */
-        xti_ipc_write_begin(g_ipc_map);
-        ((XtiSharedState *)g_ipc_map)->ime_active = 0;
-        xti_ipc_write_end(g_ipc_map);
+        thumbgrid_ipc_write_begin(g_ipc_map);
+        ((ThumbGridSharedState *)g_ipc_map)->ime_active = 0;
+        thumbgrid_ipc_write_end(g_ipc_map);
 
-        sceKernelMunmap((void *)g_ipc_map, XTI_IPC_FILE_SIZE);
+        sceKernelMunmap((void *)g_ipc_map, TG_IPC_FILE_SIZE);
         g_ipc_map = NULL;
     }
     if (g_ipc_fd >= 0) {
@@ -194,56 +194,56 @@ static void ipc_sync_state(void) {
     if (!g_custom_active || g_session.state != IME_STATE_ACTIVE) {
         /* Just mark inactive */
         if (g_ipc_map->ime_active) {
-            xti_ipc_write_begin(g_ipc_map);
-            ((XtiSharedState *)g_ipc_map)->ime_active = 0;
-            xti_ipc_write_end(g_ipc_map);
+            thumbgrid_ipc_write_begin(g_ipc_map);
+            ((ThumbGridSharedState *)g_ipc_map)->ime_active = 0;
+            thumbgrid_ipc_write_end(g_ipc_map);
         }
         return;
     }
 
-    XtiSharedState *m = (XtiSharedState *)g_ipc_map;
+    ThumbGridSharedState *m = (ThumbGridSharedState *)g_ipc_map;
 
-    xti_ipc_write_begin(g_ipc_map);
+    thumbgrid_ipc_write_begin(g_ipc_map);
 
     m->ime_active    = 1;
-    m->selected_cell = g_xti.selected_cell;
-    m->current_page  = g_xti.current_page;
-    m->accent_mode   = g_xti.accent_mode ? 1 : 0;
+    m->selected_cell = g_tgrid.selected_cell;
+    m->current_page  = g_tgrid.current_page;
+    m->accent_mode   = g_tgrid.accent_mode ? 1 : 0;
     m->output_length = g_session.output_length;
     m->text_cursor   = g_session.text_cursor;
     m->selected_all  = g_session.selected_all ? 1 : 0;
     m->sel_start     = g_session.sel_start;
     m->sel_end       = g_session.sel_end;
-    m->offset_x      = g_xti.offset_x;
-    m->offset_y      = g_xti.offset_y;
+    m->offset_x      = g_tgrid.offset_x;
+    m->offset_y      = g_tgrid.offset_y;
 
     /* Copy output buffer */
     uint32_t copy_len = g_session.output_length;
-    if (copy_len > XTI_IPC_MAX_OUTPUT) copy_len = XTI_IPC_MAX_OUTPUT;
+    if (copy_len > TG_IPC_MAX_OUTPUT) copy_len = TG_IPC_MAX_OUTPUT;
     memcpy(m->output, g_session.output, copy_len * sizeof(uint16_t));
 
     /* Copy title (UTF-16) */
-    memcpy(m->title, g_xti.title, XTI_IPC_TITLE_MAX * sizeof(uint16_t));
+    memcpy(m->title, g_tgrid.title, TG_IPC_TITLE_MAX * sizeof(uint16_t));
 
     /* Copy page name */
-    const XtiPage *page = &g_xti.pages[g_xti.current_page];
-    strncpy(m->page_name, page->name, XTI_IPC_PAGE_NAME_MAX - 1);
-    m->page_name[XTI_IPC_PAGE_NAME_MAX - 1] = '\0';
+    const ThumbGridPage *page = &g_tgrid.pages[g_tgrid.current_page];
+    strncpy(m->page_name, page->name, TG_IPC_PAGE_NAME_MAX - 1);
+    m->page_name[TG_IPC_PAGE_NAME_MAX - 1] = '\0';
 
     /* Copy cell characters */
     memcpy(m->cells, page->chars, sizeof(m->cells));
 
     /* L2+center override: show Cut/Copy/Paste/Caps on center cell */
     if (g_l2_shift_active) {
-        m->cells[XTI_CENTER_CELL][XTI_BTN_TRIANGLE] = XTI_SPECIAL_PASTE;
-        m->cells[XTI_CENTER_CELL][XTI_BTN_CIRCLE]   = XTI_SPECIAL_CAPS;
-        m->cells[XTI_CENTER_CELL][XTI_BTN_CROSS]    = XTI_SPECIAL_CUT;
-        m->cells[XTI_CENTER_CELL][XTI_BTN_SQUARE]   = XTI_SPECIAL_COPY;
+        m->cells[TG_CENTER_CELL][TG_BTN_TRIANGLE] = TG_SPECIAL_PASTE;
+        m->cells[TG_CENTER_CELL][TG_BTN_CIRCLE]   = TG_SPECIAL_CAPS;
+        m->cells[TG_CENTER_CELL][TG_BTN_CROSS]    = TG_SPECIAL_CUT;
+        m->cells[TG_CENTER_CELL][TG_BTN_SQUARE]   = TG_SPECIAL_COPY;
     }
 
     m->shift_active = g_l2_shift_active ? 1 : 0;
 
-    xti_ipc_write_end(g_ipc_map);
+    thumbgrid_ipc_write_end(g_ipc_map);
 }
 
 /* ─── Helper: Resolve User ID ─────────────────────────────────────── */
@@ -299,7 +299,7 @@ static void ime_hook_close_pad(void) {
 
 /* ─── Overlay Draw Callback ───────────────────────────────────────── */
 
-static void xti_draw_callback(uint32_t *fb, uint32_t pitch,
+static void thumbgrid_draw_callback(uint32_t *fb, uint32_t pitch,
                                uint32_t width, uint32_t height)
 {
     if (!g_custom_active || g_session.state != IME_STATE_ACTIVE) {
@@ -310,13 +310,13 @@ static void xti_draw_callback(uint32_t *fb, uint32_t pitch,
     g_overlay_screen_w = width;
     g_overlay_screen_h = height;
 
-    xti_draw(&g_xti, &g_session, fb, pitch, width, height);
+    thumbgrid_draw(&g_tgrid, &g_session, fb, pitch, width, height);
 }
 
 /* ─── Notification Fallback Display ───────────────────────────────── */
 
 /**
- * Display XTI state via PS4 notification when framebuffer overlay
+ * Display ThumbGrid state via PS4 notification when framebuffer overlay
  * is unavailable. Shows current cell characters, text buffer, and page.
  */
 static void notify_fallback_display(uint64_t now_us) {
@@ -326,19 +326,19 @@ static void notify_fallback_display(uint64_t now_us) {
     if (now_us - g_last_notify_time_us < IME_NOTIFY_INTERVAL_US) return;
 
     /* Build compact display of current cell's characters */
-    const XtiPage *page = &g_xti.pages[g_xti.current_page];
-    int cell = g_xti.selected_cell;
-    char c_tri = page->chars[cell][XTI_BTN_TRIANGLE];
-    char c_cir = page->chars[cell][XTI_BTN_CIRCLE];
-    char c_crs = page->chars[cell][XTI_BTN_CROSS];
-    char c_sqr = page->chars[cell][XTI_BTN_SQUARE];
+    const ThumbGridPage *page = &g_tgrid.pages[g_tgrid.current_page];
+    int cell = g_tgrid.selected_cell;
+    char c_tri = page->chars[cell][TG_BTN_TRIANGLE];
+    char c_cir = page->chars[cell][TG_BTN_CIRCLE];
+    char c_crs = page->chars[cell][TG_BTN_CROSS];
+    char c_sqr = page->chars[cell][TG_BTN_SQUARE];
 
     /* Special function labels for center cell */
     char tri_buf[4], cir_buf[4], crs_buf[4], sqr_buf[4];
 
     #define CHAR_OR_LABEL(c, buf) do { \
-        if ((c) == XTI_SPECIAL_BKSP) { buf[0]='B'; buf[1]='S'; buf[2]=0; } \
-        else if ((c) == XTI_SPECIAL_SPACE) { buf[0]='S'; buf[1]='P'; buf[2]=0; } \
+        if ((c) == TG_SPECIAL_BKSP) { buf[0]='B'; buf[1]='S'; buf[2]=0; } \
+        else if ((c) == TG_SPECIAL_SPACE) { buf[0]='S'; buf[1]='P'; buf[2]=0; } \
         else { buf[0]=(c); buf[1]=0; } \
     } while(0)
 
@@ -361,7 +361,7 @@ static void notify_fallback_display(uint64_t now_us) {
 
     /* Simple hash to avoid redundant updates */
     uint32_t hash = (uint32_t)cell ^ (tlen << 8) ^
-                    ((uint32_t)g_xti.current_page << 16) ^
+                    ((uint32_t)g_tgrid.current_page << 16) ^
                     ((uint32_t)c_tri << 24);
     if (hash == g_last_display_hash) return;
     g_last_display_hash = hash;
@@ -390,38 +390,38 @@ static void notify_fallback_display(uint64_t now_us) {
     sceKernelSendNotificationRequest(0, &req, sizeof(req), 0);
 }
 
-/* ─── XTI Action Dispatch ─────────────────────────────────────────── */
+/* ─── ThumbGrid Action Dispatch ────────────────────────────────────── */
 
 static void dispatch_face_button(int button_index) {
-    char ch = xti_get_char(&g_xti, button_index);
+    char ch = thumbgrid_get_char(&g_tgrid, button_index);
     if (ch == 0) return;
 
-    if (xti_is_special(&g_xti, button_index)) {
+    if (thumbgrid_is_special(&g_tgrid, button_index)) {
         /* Center cell special functions */
         switch (ch) {
-        case XTI_SPECIAL_BKSP:
+        case TG_SPECIAL_BKSP:
             ime_session_backspace(&g_session);
             break;
-        case XTI_SPECIAL_SPACE:
+        case TG_SPECIAL_SPACE:
             ime_session_add_char(&g_session, ' ');
             break;
-        case XTI_SPECIAL_ACCENT:
-            xti_toggle_accent(&g_xti);
-            LOG_DEBUG("XTI: accent mode %s", g_xti.accent_mode ? "ON" : "OFF");
+        case TG_SPECIAL_ACCENT:
+            thumbgrid_toggle_accent(&g_tgrid);
+            LOG_DEBUG("ThumbGrid: accent mode %s", g_tgrid.accent_mode ? "ON" : "OFF");
             break;
-        case XTI_SPECIAL_SELALL:
+        case TG_SPECIAL_SELALL:
             ime_session_select_all(&g_session);
-            LOG_DEBUG("XTI: select all");
+            LOG_DEBUG("ThumbGrid: select all");
             break;
-        case XTI_SPECIAL_EXIT:
+        case TG_SPECIAL_EXIT:
             ime_session_cancel(&g_session);
-            LOG_INFO("XTI: exit via center cell");
+            LOG_INFO("ThumbGrid: exit via center cell");
             break;
         }
     } else {
         /* Normal character — apply accent if active */
-        if (g_xti.accent_mode) {
-            uint16_t accented = xti_accent_lookup(ch);
+        if (g_tgrid.accent_mode) {
+            uint16_t accented = thumbgrid_accent_lookup(ch);
             if (accented) {
                 ime_session_add_char16(&g_session, accented);
                 return;
@@ -483,22 +483,22 @@ static int32_t hooked_ime_dialog_init(const OrbisImeDialogParam *param,
         return IME_ERROR_GENERIC;
     }
 
-    /* Initialize XTI grid state */
-    xti_init(&g_xti);
+    /* Initialize ThumbGrid grid state */
+    thumbgrid_init(&g_tgrid);
 
     /* Open IPC shared memory for shell overlay */
     ipc_open();
 
     /* Capture title from IME param (keep as UTF-16) */
-    g_xti.title[0] = 0;
+    g_tgrid.title[0] = 0;
     if (param->title) {
         const uint16_t *t = param->title;
         uint32_t i = 0;
-        while (t[i] != 0 && i < XTI_TITLE_MAX - 1) {
-            g_xti.title[i] = t[i];
+        while (t[i] != 0 && i < TG_TITLE_MAX - 1) {
+            g_tgrid.title[i] = t[i];
             i++;
         }
-        g_xti.title[i] = 0;
+        g_tgrid.title[i] = 0;
         LOG_DEBUG("  title: (UTF-16, %u chars)", i);
     }
 
@@ -526,9 +526,9 @@ static int32_t hooked_ime_dialog_init(const OrbisImeDialogParam *param,
     g_l3_prev = false;
 
     /* Framebuffer overlay disabled — PUI shell overlay handles rendering */
-    /* overlay_set_draw_callback(xti_draw_callback); */
+    /* overlay_set_draw_callback(thumbgrid_draw_callback); */
 
-    LOG_INFO("XTI IME session started (max=%u)", max_len);
+    LOG_INFO("ThumbGrid IME session started (max=%u)", max_len);
 
     /* Return OK — do NOT call original (no system keyboard) */
     return IME_OK;
@@ -575,10 +575,10 @@ static OrbisImeDialogStatus hooked_ime_dialog_get_status(void) {
                  pad_data.rightStick.x, pad_data.rightStick.y, now_us);
 
     /* 4. Update cell selection from left analog stick */
-    xti_select_cell(&g_xti, g_input_state.stick_x, g_input_state.stick_y);
+    thumbgrid_select_cell(&g_tgrid, g_input_state.stick_x, g_input_state.stick_y);
 
     /* 4b. Update widget position from right analog stick */
-    xti_update_position(&g_xti, g_input_state.rstick_x, g_input_state.rstick_y,
+    thumbgrid_update_position(&g_tgrid, g_input_state.rstick_x, g_input_state.rstick_y,
                          g_overlay_screen_w, g_overlay_screen_h);
 
     uint64_t input_done_us = sceKernelGetProcessTime();  /* PERF */
@@ -609,17 +609,17 @@ static OrbisImeDialogStatus hooked_ime_dialog_get_status(void) {
 
         /* L2 just crossed engage threshold → apply temporary shift */
         if (l2 >= 60 && !g_l2_shift_active && g_l2_prev_analog < 60) {
-            g_l2_saved_page = g_xti.current_page;
+            g_l2_saved_page = g_tgrid.current_page;
             /* Toggle between page 0 (lower) and 1 (upper) */
-            if (g_xti.current_page == 0)      g_xti.current_page = 1;
-            else if (g_xti.current_page == 1)  g_xti.current_page = 0;
+            if (g_tgrid.current_page == 0)      g_tgrid.current_page = 1;
+            else if (g_tgrid.current_page == 1)  g_tgrid.current_page = 0;
             g_l2_shift_active = true;
         }
 
         /* L2 released → revert temporary shift */
         if (l2 < 40 && g_l2_prev_analog >= 40) {
             if (g_l2_shift_active && g_l2_saved_page >= 0) {
-                g_xti.current_page = g_l2_saved_page;
+                g_tgrid.current_page = g_l2_saved_page;
             }
             g_l2_shift_active = false;
             g_l2_saved_page = -1;
@@ -632,14 +632,14 @@ static OrbisImeDialogStatus hooked_ime_dialog_get_status(void) {
     {
         bool l3_now = (pad_data.buttons & PAD_BUTTON_L3) != 0;
         if (l3_now && !g_l3_prev) {
-            xti_toggle_accent(&g_xti);
-            LOG_DEBUG("XTI: L3 accent mode %s", g_xti.accent_mode ? "ON" : "OFF");
+            thumbgrid_toggle_accent(&g_tgrid);
+            LOG_DEBUG("ThumbGrid: L3 accent mode %s", g_tgrid.accent_mode ? "ON" : "OFF");
         }
         g_l3_prev = l3_now;
     }
 
     /* 6b. L2+center override: Cut/Copy/Paste/Caps on center cell while shift held */
-    bool l2_center_override = (g_l2_shift_active && g_xti.selected_cell == XTI_CENTER_CELL);
+    bool l2_center_override = (g_l2_shift_active && g_tgrid.selected_cell == TG_CENTER_CELL);
 
     /* 6c. X (cross) hold state machine for text selection */
     {
@@ -658,10 +658,10 @@ static OrbisImeDialogStatus hooked_ime_dialog_get_status(void) {
                 if (l2_center_override) {
                     /* L2+center X → Cut */
                     ime_session_cut(&g_session);
-                    LOG_DEBUG("XTI: L2+center X = cut");
+                    LOG_DEBUG("ThumbGrid: L2+center X = cut");
                 } else {
                     /* X tapped without D-pad → input character */
-                    dispatch_face_button(XTI_BTN_CROSS);
+                    dispatch_face_button(TG_BTN_CROSS);
                 }
             }
             g_x_held = false;
@@ -678,20 +678,20 @@ static OrbisImeDialogStatus hooked_ime_dialog_get_status(void) {
     switch (action) {
     case IME_ACTION_CANCEL:
         ime_session_cancel(&g_session);
-        LOG_INFO("XTI: cancelled");
+        LOG_INFO("ThumbGrid: cancelled");
         return ORBIS_IME_DIALOG_STATUS_FINISHED;
 
     case IME_ACTION_SUBMIT:
         ime_session_submit(&g_session);
-        LOG_INFO("XTI: R2 submit (%u chars)", g_session.output_length);
+        LOG_INFO("ThumbGrid: R2 submit (%u chars)", g_session.output_length);
         return ORBIS_IME_DIALOG_STATUS_FINISHED;
 
     case IME_ACTION_FACE_TRIANGLE:
         if (l2_center_override) {
             ime_session_paste(&g_session);
-            LOG_DEBUG("XTI: L2+center Triangle = paste");
+            LOG_DEBUG("ThumbGrid: L2+center Triangle = paste");
         } else {
-            dispatch_face_button(XTI_BTN_TRIANGLE);
+            dispatch_face_button(TG_BTN_TRIANGLE);
         }
         break;
 
@@ -700,18 +700,18 @@ static OrbisImeDialogStatus hooked_ime_dialog_get_status(void) {
             /* Caps lock toggle: make current page permanent */
             g_l2_shift_active = false;
             g_l2_saved_page = -1;  /* don't revert on L2 release */
-            LOG_DEBUG("XTI: L2+center Circle = caps lock -> page %d", g_xti.current_page);
+            LOG_DEBUG("ThumbGrid: L2+center Circle = caps lock -> page %d", g_tgrid.current_page);
         } else {
-            dispatch_face_button(XTI_BTN_CIRCLE);
+            dispatch_face_button(TG_BTN_CIRCLE);
         }
         break;
 
     case IME_ACTION_FACE_SQUARE:
         if (l2_center_override) {
             ime_session_copy(&g_session);
-            LOG_DEBUG("XTI: L2+center Square = copy");
+            LOG_DEBUG("ThumbGrid: L2+center Square = copy");
         } else {
-            dispatch_face_button(XTI_BTN_SQUARE);
+            dispatch_face_button(TG_BTN_SQUARE);
         }
         break;
 
@@ -767,8 +767,8 @@ static OrbisImeDialogStatus hooked_ime_dialog_get_status(void) {
 
     case IME_ACTION_PAGE_NEXT:
     case IME_ACTION_PAGE_PREV:
-        xti_toggle_symbols(&g_xti);
-        LOG_DEBUG("XTI: L1/R1 symbols -> page %d", g_xti.current_page);
+        thumbgrid_toggle_symbols(&g_tgrid);
+        LOG_DEBUG("ThumbGrid: L1/R1 symbols -> page %d", g_tgrid.current_page);
         break;
 
     case IME_ACTION_NONE:
@@ -779,8 +779,8 @@ static OrbisImeDialogStatus hooked_ime_dialog_get_status(void) {
     /* 7b. Backspace hold-to-repeat */
     {
         bool sq_held = input_is_held(&g_input_state, PAD_BUTTON_SQUARE);
-        char sq_char = xti_get_char(&g_xti, XTI_BTN_SQUARE);
-        bool is_bs = (sq_char == XTI_SPECIAL_BKSP);
+        char sq_char = thumbgrid_get_char(&g_tgrid, TG_BTN_SQUARE);
+        bool is_bs = (sq_char == TG_SPECIAL_BKSP);
 
         if (sq_held && is_bs) {
             if (!g_bs_held) {
@@ -873,9 +873,9 @@ static int32_t hooked_ime_dialog_term(void) {
 
         /* Signal shell overlay to hide grid */
         if (g_ipc_map) {
-            xti_ipc_write_begin(g_ipc_map);
-            ((XtiSharedState *)g_ipc_map)->ime_active = 0;
-            xti_ipc_write_end(g_ipc_map);
+            thumbgrid_ipc_write_begin(g_ipc_map);
+            ((ThumbGridSharedState *)g_ipc_map)->ime_active = 0;
+            thumbgrid_ipc_write_end(g_ipc_map);
         }
 
         ime_hook_close_pad();
@@ -884,7 +884,7 @@ static int32_t hooked_ime_dialog_term(void) {
         memset(&g_input_state, 0, sizeof(g_input_state));
         g_last_notify_time_us = 0;
         g_last_display_hash   = 0;
-        LOG_INFO("XTI IME session terminated");
+        LOG_INFO("ThumbGrid IME session terminated");
         return IME_OK;
     }
 

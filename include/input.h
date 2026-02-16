@@ -1,6 +1,6 @@
 /**
  * @file input.h
- * @brief PS4 controller input mapping for XTI grid input
+ * @brief PS4 controller input mapping for ThumbGrid input
  */
 
 #ifndef INPUT_H

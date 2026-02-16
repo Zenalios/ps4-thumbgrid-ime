@@ -1,6 +1,6 @@
 /**
- * @file xti.c
- * @brief XTI 3x3 grid text input engine — character maps, cell selection, rendering
+ * @file thumbgrid.c
+ * @brief ThumbGrid 3x3 grid text input engine — character maps, cell selection, rendering
  *
  * PS4-style button mapping: all 4 face buttons input characters on non-center cells.
  * Center cell (4): Triangle=Space, Circle=Exit, Cross=SelectAll, Square=Backspace.
@@ -10,7 +10,7 @@
 #include <string.h>
 
 #include "plugin_common.h"
-#include "xti.h"
+#include "thumbgrid.h"
 #include "ime_custom.h"
 #include "overlay.h"
 
@@ -30,13 +30,13 @@
  *   triangle=Space, circle=Exit IME, cross=select all, square=Backspace
  */
 
-#define SPC XTI_SPECIAL_SPACE
-#define BKS XTI_SPECIAL_BKSP
-#define ACC XTI_SPECIAL_ACCENT
-#define SEL XTI_SPECIAL_SELALL
-#define EXT XTI_SPECIAL_EXIT
+#define SPC TG_SPECIAL_SPACE
+#define BKS TG_SPECIAL_BKSP
+#define ACC TG_SPECIAL_ACCENT
+#define SEL TG_SPECIAL_SELALL
+#define EXT TG_SPECIAL_EXIT
 
-static const XtiPage g_xti_pages[XTI_MAX_PAGES] = {
+static const ThumbGridPage g_thumbgrid_pages[TG_MAX_PAGES] = {
     /* Page 0: lowercase */
     {
         .name = "abc",
@@ -92,19 +92,19 @@ static const XtiPage g_xti_pages[XTI_MAX_PAGES] = {
 
 /* ─── Core Functions ─────────────────────────────────────────────── */
 
-void xti_init(XtiState *state) {
+void thumbgrid_init(ThumbGridState *state) {
     if (!state) return;
-    state->selected_cell = XTI_CENTER_CELL;
+    state->selected_cell = TG_CENTER_CELL;
     state->current_page  = 0;
-    state->page_count    = XTI_MAX_PAGES;
-    state->pages         = g_xti_pages;
+    state->page_count    = TG_MAX_PAGES;
+    state->pages         = g_thumbgrid_pages;
     state->offset_x      = 0;
     state->offset_y      = 0;
     state->accent_mode   = false;
     state->title[0]      = '\0';
 }
 
-void xti_select_cell(XtiState *state, uint8_t stick_x, uint8_t stick_y) {
+void thumbgrid_select_cell(ThumbGridState *state, uint8_t stick_x, uint8_t stick_y) {
     if (!state) return;
 
     int col, row;
@@ -120,26 +120,26 @@ void xti_select_cell(XtiState *state, uint8_t stick_x, uint8_t stick_y) {
     state->selected_cell = row * 3 + col;
 }
 
-char xti_get_char(const XtiState *state, int button_index) {
+char thumbgrid_get_char(const ThumbGridState *state, int button_index) {
     if (!state || !state->pages) return 0;
-    if (button_index < 0 || button_index >= XTI_BUTTONS) return 0;
-    if (state->selected_cell < 0 || state->selected_cell >= XTI_CELLS) return 0;
+    if (button_index < 0 || button_index >= TG_BUTTONS) return 0;
+    if (state->selected_cell < 0 || state->selected_cell >= TG_CELLS) return 0;
     if (state->current_page < 0 || state->current_page >= state->page_count) return 0;
 
     return state->pages[state->current_page]
                .chars[state->selected_cell][button_index];
 }
 
-bool xti_is_special(const XtiState *state, int button_index) {
-    char c = xti_get_char(state, button_index);
-    return (c == XTI_SPECIAL_SPACE  || c == XTI_SPECIAL_BKSP   ||
-            c == XTI_SPECIAL_ACCENT || c == XTI_SPECIAL_SELALL ||
-            c == XTI_SPECIAL_EXIT   || c == XTI_SPECIAL_CUT    ||
-            c == XTI_SPECIAL_COPY   || c == XTI_SPECIAL_PASTE  ||
-            c == XTI_SPECIAL_CAPS);
+bool thumbgrid_is_special(const ThumbGridState *state, int button_index) {
+    char c = thumbgrid_get_char(state, button_index);
+    return (c == TG_SPECIAL_SPACE  || c == TG_SPECIAL_BKSP   ||
+            c == TG_SPECIAL_ACCENT || c == TG_SPECIAL_SELALL ||
+            c == TG_SPECIAL_EXIT   || c == TG_SPECIAL_CUT    ||
+            c == TG_SPECIAL_COPY   || c == TG_SPECIAL_PASTE  ||
+            c == TG_SPECIAL_CAPS);
 }
 
-void xti_shift_toggle(XtiState *state) {
+void thumbgrid_shift_toggle(ThumbGridState *state) {
     if (!state) return;
     if (state->current_page == 0)
         state->current_page = 1;
@@ -148,7 +148,7 @@ void xti_shift_toggle(XtiState *state) {
     /* page 2 stays on page 2 — use L1/R1 to leave it */
 }
 
-void xti_toggle_symbols(XtiState *state) {
+void thumbgrid_toggle_symbols(ThumbGridState *state) {
     if (!state) return;
     /* Toggle between letter pages (0/1) and symbols page (2) */
     if (state->current_page == 2)
@@ -157,13 +157,13 @@ void xti_toggle_symbols(XtiState *state) {
         state->current_page = 2;
 }
 
-void xti_toggle_accent(XtiState *state) {
+void thumbgrid_toggle_accent(ThumbGridState *state) {
     if (!state) return;
     state->accent_mode = !state->accent_mode;
 }
 
 /* Accent lookup: base char → accented UTF-16 code point, 0 if none */
-uint16_t xti_accent_lookup(char base) {
+uint16_t thumbgrid_accent_lookup(char base) {
     switch (base) {
     case 'a': return 0x00E1; /* á */
     case 'e': return 0x00E9; /* é */
@@ -218,7 +218,7 @@ static int stick_speed(uint8_t val) {
     return 10;
 }
 
-void xti_update_position(XtiState *state, uint8_t rstick_x, uint8_t rstick_y,
+void thumbgrid_update_position(ThumbGridState *state, uint8_t rstick_x, uint8_t rstick_y,
                           uint32_t screen_w, uint32_t screen_h)
 {
     if (!state) return;
@@ -262,15 +262,15 @@ static void draw_cell_border(uint32_t *fb, uint32_t pitch,
 /* Helper: get display string for a special function char */
 static const char *special_label(char c) {
     switch (c) {
-    case XTI_SPECIAL_BKSP:   return "Del";
-    case XTI_SPECIAL_SPACE:  return "Space";
-    case XTI_SPECIAL_ACCENT: return "AC";
-    case XTI_SPECIAL_SELALL: return "Select";
-    case XTI_SPECIAL_EXIT:   return "Exit";
-    case XTI_SPECIAL_CUT:    return "Cut";
-    case XTI_SPECIAL_COPY:   return "Copy";
-    case XTI_SPECIAL_PASTE:  return "Paste";
-    case XTI_SPECIAL_CAPS:   return "CAPS";
+    case TG_SPECIAL_BKSP:   return "Del";
+    case TG_SPECIAL_SPACE:  return "Space";
+    case TG_SPECIAL_ACCENT: return "AC";
+    case TG_SPECIAL_SELALL: return "Select";
+    case TG_SPECIAL_EXIT:   return "Exit";
+    case TG_SPECIAL_CUT:    return "Cut";
+    case TG_SPECIAL_COPY:   return "Copy";
+    case TG_SPECIAL_PASTE:  return "Paste";
+    case TG_SPECIAL_CAPS:   return "CAPS";
     default:                 return "?";
     }
 }
@@ -326,19 +326,19 @@ static void draw_cell_char(uint32_t *fb, uint32_t pitch,
                            int btn_idx, char ch,
                            bool is_selected, bool accent_mode)
 {
-    bool is_spec = (ch == XTI_SPECIAL_SPACE  || ch == XTI_SPECIAL_BKSP   ||
-                    ch == XTI_SPECIAL_ACCENT || ch == XTI_SPECIAL_SELALL ||
-                    ch == XTI_SPECIAL_EXIT   || ch == XTI_SPECIAL_CUT    ||
-                    ch == XTI_SPECIAL_COPY   || ch == XTI_SPECIAL_PASTE  ||
-                    ch == XTI_SPECIAL_CAPS);
+    bool is_spec = (ch == TG_SPECIAL_SPACE  || ch == TG_SPECIAL_BKSP   ||
+                    ch == TG_SPECIAL_ACCENT || ch == TG_SPECIAL_SELALL ||
+                    ch == TG_SPECIAL_EXIT   || ch == TG_SPECIAL_CUT    ||
+                    ch == TG_SPECIAL_COPY   || ch == TG_SPECIAL_PASTE  ||
+                    ch == TG_SPECIAL_CAPS);
     int cw = is_spec ? 32 : 16;  /* 2x: 2-char label = 32px, single char = 16px */
 
     int ox, oy;
     switch (btn_idx) {
-    case XTI_BTN_TRIANGLE: ox = CELL_W / 2 - cw / 2; oy = 10;            break;
-    case XTI_BTN_CIRCLE:   ox = CELL_W - cw - 12;     oy = CELL_H / 2 - 8; break;
-    case XTI_BTN_CROSS:    ox = CELL_W / 2 - cw / 2; oy = CELL_H - 26;   break;
-    case XTI_BTN_SQUARE:   ox = 12;                   oy = CELL_H / 2 - 8; break;
+    case TG_BTN_TRIANGLE: ox = CELL_W / 2 - cw / 2; oy = 10;            break;
+    case TG_BTN_CIRCLE:   ox = CELL_W - cw - 12;     oy = CELL_H / 2 - 8; break;
+    case TG_BTN_CROSS:    ox = CELL_W / 2 - cw / 2; oy = CELL_H - 26;   break;
+    case TG_BTN_SQUARE:   ox = 12;                   oy = CELL_H / 2 - 8; break;
     default: return;
     }
 
@@ -362,7 +362,7 @@ static void draw_cell_char(uint32_t *fb, uint32_t pitch,
 
 /* ─── Main Draw ──────────────────────────────────────────────────── */
 
-void xti_draw(const XtiState *state, const struct ImeSession *session,
+void thumbgrid_draw(const ThumbGridState *state, const struct ImeSession *session,
               uint32_t *fb, uint32_t pitch,
               uint32_t screen_w, uint32_t screen_h)
 {
@@ -382,7 +382,7 @@ void xti_draw(const XtiState *state, const struct ImeSession *session,
     if (base_y > (int)screen_h - OVL_TOTAL_H)
         base_y = (int)screen_h - OVL_TOTAL_H;
 
-    const XtiPage *page = &state->pages[state->current_page];
+    const ThumbGridPage *page = &state->pages[state->current_page];
 
     uint64_t t_start = sceKernelGetProcessTime();  /* PERF */
 
@@ -393,8 +393,8 @@ void xti_draw(const XtiState *state, const struct ImeSession *session,
     int cur_y = base_y + 4;
     if (state->title[0] != 0) {
         /* Legacy FB overlay — convert UTF-16 title to ASCII for old renderer */
-        char ascii_title[XTI_TITLE_MAX];
-        for (int i = 0; i < XTI_TITLE_MAX; i++) {
+        char ascii_title[TG_TITLE_MAX];
+        for (int i = 0; i < TG_TITLE_MAX; i++) {
             ascii_title[i] = (state->title[i] < 128) ? (char)state->title[i] : '?';
             if (state->title[i] == 0) break;
         }
@@ -461,7 +461,7 @@ void xti_draw(const XtiState *state, const struct ImeSession *session,
     /* ─── Grid ─── */
     int grid_y = text_y + TEXT_BAR_H + 2;
 
-    for (int cell = 0; cell < XTI_CELLS; cell++) {
+    for (int cell = 0; cell < TG_CELLS; cell++) {
         int row = cell / 3;
         int col = cell % 3;
 
@@ -479,7 +479,7 @@ void xti_draw(const XtiState *state, const struct ImeSession *session,
         }
 
         /* Draw the 4 characters in button positions (2x font) */
-        for (int btn = 0; btn < XTI_BUTTONS; btn++) {
+        for (int btn = 0; btn < TG_BUTTONS; btn++) {
             char ch = page->chars[cell][btn];
             draw_cell_char(fb, pitch, cx, cy, btn, ch, selected, state->accent_mode);
         }

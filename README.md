@@ -4,7 +4,9 @@ A custom Input Method Editor (IME) for PlayStation 4, replacing the system on-sc
 
 ## Overview
 
-When a PS4 game opens a text input dialog (`sceImeDialogInit`), this plugin intercepts it and presents a custom XTI (Xbox Thumbstick Input) grid instead of Sony's default keyboard. The left analog stick selects one of 9 cells, and face buttons (Triangle, Circle, Cross, Square) input the character shown at that position.
+When a PS4 game opens a text input dialog (`sceImeDialogInit`), this plugin intercepts it and presents a ThumbGrid — a 3x3 cell grid navigated with the analog stick — instead of Sony's default keyboard. Face buttons (Triangle, Circle, Cross, Square) input the character shown at that position in the selected cell.
+
+The input method is inspired by the on-screen keyboard from [PSPXTI](https://github.com/PSP-Archive/PSPXTI), a TI-92 calculator emulator for PSP by Ludovic Jacomme (ZX-81), which used the same analog stick + face button grid concept.
 
 The system consists of two PRX modules:
 
@@ -145,19 +147,19 @@ Reboot the PS4 (or restart the game). The custom IME will activate whenever a ga
 
 ```
 Game Process                          SceShellUI Process
-+-------------------+                +----------------------+
-| custom_ime.prx    |                | shell_overlay.prx    |
-|                   |   file-backed  |                      |
-| IME Dialog Hooks  |     mmap       | Mono Runtime Attach  |
-| Controller Input  | ------------> | PUI Widget Tree      |
-| ImeSession State  |  xti_ipc.bin  | Label/Panel Updates  |
-| XTI Grid Engine   |  (lock-free)  | ~30Hz Poll Thread    |
-+-------------------+                +----------------------+
++-----------------------+            +----------------------+
+| custom_ime.prx        |            | shell_overlay.prx    |
+|                       | file-backed|                      |
+| IME Dialog Hooks      |   mmap     | Mono Runtime Attach  |
+| Controller Input      | ---------> | PUI Widget Tree      |
+| ImeSession State      | thumbgrid  | Label/Panel Updates  |
+| ThumbGrid Engine      | _ipc.bin   | ~30Hz Poll Thread    |
++-----------------------+            +----------------------+
 ```
 
 ### IPC Protocol
 
-Communication uses a file-backed `mmap` at `/user/data/xti_ipc.bin` (accessible to both process sandboxes). The protocol is lock-free using a sequence counter:
+Communication uses a file-backed `mmap` at `/user/data/thumbgrid_ipc.bin` (accessible to both process sandboxes). The protocol is lock-free using a sequence counter:
 
 - **Writer** (game-side): `seq++` (odd = writing), write data, `seq++` (even = ready)
 - **Reader** (shell-side): Read `seq`, copy data, read `seq` again. Valid only if both reads match and are even.
@@ -168,14 +170,18 @@ Communication uses a file-backed `mmap` at `/user/data/xti_ipc.bin` (accessible 
 |------|-------------|
 | `src/ime_hook.c` | IME dialog function hooks, controller input processing, main logic |
 | `src/ime_custom.c` | Text session state machine (cursor, selection, clipboard, submit) |
-| `src/xti.c` | XTI 3x3 grid engine (pages, cell layout, accent mapping) |
+| `src/thumbgrid.c` | ThumbGrid 3x3 grid engine (pages, cell layout, accent mapping) |
 | `src/input.c` | Controller input edge detection and action mapping |
-| `include/xti_ipc.h` | Shared IPC struct definition with sequence counter helpers |
+| `include/thumbgrid_ipc.h` | Shared IPC struct definition with sequence counter helpers |
 | `shell-overlay/src/main.c` | PUI overlay (Mono runtime, widget tree, IPC reader) |
 
 ## Credits and References
 
-This project builds on the work of several open-source PS4 homebrew projects:
+### Inspiration
+
+- **[PSPXTI](https://github.com/PSP-Archive/PSPXTI)** by Ludovic Jacomme (ZX-81) — TI-92 calculator emulator for PSP whose on-screen keyboard used a 3x3 analog stick grid with face button input, the direct inspiration for this project's input method (GPL-2.0 License)
+
+### Dependencies
 
 - **[GoldHEN](https://github.com/GoldHEN/GoldHEN)** by SiSTRo — PS4 homebrew enabler that provides the plugin loading framework
 - **[GoldHEN Plugins SDK](https://github.com/GoldHEN/GoldHEN_Plugins_SDK)** — Plugin development SDK with Detour hooking library (MIT License)
@@ -192,4 +198,4 @@ This project builds on the work of several open-source PS4 homebrew projects:
 
 This project is licensed under the [MIT License](LICENSE).
 
-The OpenOrbis PS4 Toolchain (GPL-3.0) is used solely as a build tool and is not linked into or distributed with this software.
+This is a clean-room implementation inspired by the PSPXTI input concept. No code from PSPXTI is used. The OpenOrbis PS4 Toolchain (GPL-3.0) is used solely as a build tool and is not linked into or distributed with this software.

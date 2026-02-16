@@ -1,13 +1,13 @@
 /**
  * @file main.c
- * @brief SceShellUI overlay — Full XTI grid via PUI widgets + IPC reader
+ * @brief SceShellUI overlay — Full ThumbGrid via PUI widgets + IPC reader
  *
  * This PRX is injected into the SceShellUI process via GoldHEN's
  * sys_sdk_proc_prx_load. It attaches to the existing Mono runtime,
- * finds the PUI "Game" overlay scene, and creates the full XTI 3x3
- * grid IME using PUI Panel/Label widgets.
+ * finds the PUI "Game" overlay scene, and creates the full ThumbGrid
+ * IME using PUI Panel/Label widgets.
  *
- * Reads game-side state from file-backed shared memory (xti_ipc.bin)
+ * Reads game-side state from file-backed shared memory (thumbgrid_ipc.bin)
  * and updates widget properties at ~30Hz.
  *
  * Widget tree:
@@ -68,7 +68,7 @@ typedef struct MonoGenericContext MonoGenericContext;
 extern MonoProperty *mono_class_get_properties(MonoClass *klass, void **iter);
 extern const char   *mono_property_get_name(MonoProperty *prop);
 
-#include "xti_ipc.h"
+#include "thumbgrid_ipc.h"
 
 /* ─── File-based logging ────────────────────────────────────────── */
 
@@ -204,17 +204,17 @@ static const char *LM_NS_CANDIDATES[] = {
 #define DEFAULT_X      ((int)((1920.0f - GRID_PANEL_W) / 2.0f))
 #define DEFAULT_Y      ((int)(1080.0f * 2.0f / 3.0f - GRID_PANEL_H / 2.0f))
 
-/* ─── Special character constants (must match xti.h) ─────────── */
+/* ─── Special character constants (must match thumbgrid.h) ───── */
 
-#define XTI_SPECIAL_BKSP    '\x02'
-#define XTI_SPECIAL_SPACE   '\x03'
-#define XTI_SPECIAL_ACCENT  '\x04'
-#define XTI_SPECIAL_SELALL  '\x05'
-#define XTI_SPECIAL_EXIT    '\x06'
-#define XTI_SPECIAL_CUT     '\x07'
-#define XTI_SPECIAL_COPY    '\x08'
-#define XTI_SPECIAL_PASTE   '\x09'
-#define XTI_SPECIAL_CAPS    '\x0A'
+#define TG_SPECIAL_BKSP    '\x02'
+#define TG_SPECIAL_SPACE   '\x03'
+#define TG_SPECIAL_ACCENT  '\x04'
+#define TG_SPECIAL_SELALL  '\x05'
+#define TG_SPECIAL_EXIT    '\x06'
+#define TG_SPECIAL_CUT     '\x07'
+#define TG_SPECIAL_COPY    '\x08'
+#define TG_SPECIAL_PASTE   '\x09'
+#define TG_SPECIAL_CAPS    '\x0A'
 
 /* ─── Global state ────────────────────────────────────────────── */
 
@@ -280,9 +280,9 @@ typedef struct {
 } PUIColor;
 
 /* IPC state */
-static volatile XtiSharedState *g_ipc_map = NULL;
+static volatile ThumbGridSharedState *g_ipc_map = NULL;
 static int                      g_ipc_fd  = -1;
-static XtiSharedState           g_cached_state;
+static ThumbGridSharedState           g_cached_state;
 static volatile bool            g_running = false;
 static volatile bool            g_initialized = false;
 
@@ -889,25 +889,25 @@ static bool add_child(MonoObject *parent, MonoObject *child) {
 
 static const char *special_label(char c) {
     switch (c) {
-    case XTI_SPECIAL_BKSP:   return "Del";
-    case XTI_SPECIAL_SPACE:  return "Space";
-    case XTI_SPECIAL_ACCENT: return "\xc2\xb4";  /* ´ U+00B4 acute accent */
-    case XTI_SPECIAL_SELALL: return "Select";
-    case XTI_SPECIAL_EXIT:   return "Exit";
-    case XTI_SPECIAL_CUT:    return "Cut";
-    case XTI_SPECIAL_COPY:   return "Copy";
-    case XTI_SPECIAL_PASTE:  return "Paste";
-    case XTI_SPECIAL_CAPS:   return "CAPS";
+    case TG_SPECIAL_BKSP:   return "Del";
+    case TG_SPECIAL_SPACE:  return "Space";
+    case TG_SPECIAL_ACCENT: return "\xc2\xb4";  /* ´ U+00B4 acute accent */
+    case TG_SPECIAL_SELALL: return "Select";
+    case TG_SPECIAL_EXIT:   return "Exit";
+    case TG_SPECIAL_CUT:    return "Cut";
+    case TG_SPECIAL_COPY:   return "Copy";
+    case TG_SPECIAL_PASTE:  return "Paste";
+    case TG_SPECIAL_CAPS:   return "CAPS";
     default: return "?";
     }
 }
 
 static bool is_special_char(char c) {
-    return (c == XTI_SPECIAL_BKSP || c == XTI_SPECIAL_SPACE ||
-            c == XTI_SPECIAL_ACCENT || c == XTI_SPECIAL_SELALL ||
-            c == XTI_SPECIAL_EXIT || c == XTI_SPECIAL_CUT ||
-            c == XTI_SPECIAL_COPY || c == XTI_SPECIAL_PASTE ||
-            c == XTI_SPECIAL_CAPS);
+    return (c == TG_SPECIAL_BKSP || c == TG_SPECIAL_SPACE ||
+            c == TG_SPECIAL_ACCENT || c == TG_SPECIAL_SELALL ||
+            c == TG_SPECIAL_EXIT || c == TG_SPECIAL_CUT ||
+            c == TG_SPECIAL_COPY || c == TG_SPECIAL_PASTE ||
+            c == TG_SPECIAL_CAPS);
 }
 
 /**
@@ -995,7 +995,7 @@ static bool build_widget_tree(MonoObject *root) {
     float inner_w = GRID_PANEL_W - BORDER_W * 2 - PAD_OUTER * 2;
 
     /* ── 3. Title label ── */
-    g_title_label = create_label("XTI");
+    g_title_label = create_label("ThumbGrid");
     if (g_title_label) {
         set_widget_pos(g_title_label, content_left, cur_y,
                        inner_w, TITLE_BAR_H);
@@ -1192,9 +1192,9 @@ static bool ipc_reader_open(void) {
     /* Try multiple paths — /user/data/ first since it's shared across
      * process sandboxes (game and SceShellUI can both access it) */
     static const char *ipc_paths[] = {
-        "/user/data/xti_ipc.bin",
-        "/data/xti_ipc.bin",
-        "/tmp/xti_ipc.bin",
+        "/user/data/thumbgrid_ipc.bin",
+        "/data/thumbgrid_ipc.bin",
+        "/tmp/thumbgrid_ipc.bin",
         NULL
     };
     static int log_count = 0;
@@ -1220,7 +1220,7 @@ static bool ipc_reader_open(void) {
 opened:;
 
     void *addr = NULL;
-    int rc = sceKernelMmap(0, XTI_IPC_FILE_SIZE,
+    int rc = sceKernelMmap(0, TG_IPC_FILE_SIZE,
                            PROT_READ | PROT_WRITE,
                            MAP_SHARED, g_ipc_fd, 0, &addr);
     if (rc < 0 || addr == MAP_FAILED || !addr) {
@@ -1229,15 +1229,15 @@ opened:;
         return false;
     }
 
-    g_ipc_map = (volatile XtiSharedState *)addr;
+    g_ipc_map = (volatile ThumbGridSharedState *)addr;
     memset(&g_cached_state, 0, sizeof(g_cached_state));
 
     /* Clear stale state from previous sessions.
      * - ime_active=0: prevents grid appearing immediately on game start
      * - sequence=0: ensures even value so reader protocol works.
      *   If a previous game crashed mid-write, sequence could be stuck
-     *   at odd, which makes xti_ipc_read reject ALL reads permanently. */
-    XtiSharedState *stale = (XtiSharedState *)addr;
+     *   at odd, which makes thumbgrid_ipc_read reject ALL reads permanently. */
+    ThumbGridSharedState *stale = (ThumbGridSharedState *)addr;
     stale->sequence = 0;
     stale->ime_active = 0;
 
@@ -1247,7 +1247,7 @@ opened:;
 
 static void ipc_reader_close(void) {
     if (g_ipc_map) {
-        sceKernelMunmap((void *)g_ipc_map, XTI_IPC_FILE_SIZE);
+        sceKernelMunmap((void *)g_ipc_map, TG_IPC_FILE_SIZE);
         g_ipc_map = NULL;
     }
     if (g_ipc_fd >= 0) {
@@ -1258,7 +1258,7 @@ static void ipc_reader_close(void) {
 
 /* ─── Update widgets from IPC state ──────────────────────────── */
 
-static void update_widgets(const XtiSharedState *state) {
+static void update_widgets(const ThumbGridSharedState *state) {
     /* Show/hide grid based on ime_active */
     if (state->ime_active && !g_cached_state.ime_active) {
         if (g_border_panel) set_widget_visible(g_border_panel, true);
@@ -1301,10 +1301,10 @@ static void update_widgets(const XtiSharedState *state) {
     /* Update title (UTF-16 → UTF-8 conversion) */
     if (g_title_label &&
         memcmp(state->title, g_cached_state.title,
-               XTI_IPC_TITLE_MAX * sizeof(uint16_t)) != 0) {
+               TG_IPC_TITLE_MAX * sizeof(uint16_t)) != 0) {
         char tbuf[200];
         int tp = 0;
-        for (int i = 0; i < XTI_IPC_TITLE_MAX && state->title[i] && tp < 190; i++) {
+        for (int i = 0; i < TG_IPC_TITLE_MAX && state->title[i] && tp < 190; i++) {
             uint16_t ch = state->title[i];
             if (ch >= 32 && ch < 128) {
                 tbuf[tp++] = (char)ch;
@@ -1467,7 +1467,7 @@ static void update_widgets(const XtiSharedState *state) {
     /* Update status bar — just show page name */
     if (state->current_page != g_cached_state.current_page ||
         memcmp(state->page_name, g_cached_state.page_name,
-               XTI_IPC_PAGE_NAME_MAX) != 0) {
+               TG_IPC_PAGE_NAME_MAX) != 0) {
         if (g_status_label) {
             char buf[16];
             snprintf(buf, sizeof(buf), "[%s]", state->page_name);
@@ -1522,8 +1522,8 @@ static void *poll_thread(void *arg) {
         }
 
         /* Read IPC state */
-        XtiSharedState snap;
-        if (xti_ipc_read(g_ipc_map, &snap)) {
+        ThumbGridSharedState snap;
+        if (thumbgrid_ipc_read(g_ipc_map, &snap)) {
             read_ok++;
 
             /* Track sequence changes for stale detection */
@@ -1540,7 +1540,7 @@ static void *poll_thread(void *arg) {
                     snap.sequence);
                 snap.ime_active = 0;
                 /* Reset IPC file so next game starts clean */
-                XtiSharedState *m = (XtiSharedState *)g_ipc_map;
+                ThumbGridSharedState *m = (ThumbGridSharedState *)g_ipc_map;
                 m->ime_active = 0;
                 m->sequence = 0;
                 last_seq = 0;
