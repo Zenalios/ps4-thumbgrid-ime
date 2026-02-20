@@ -173,19 +173,12 @@ static int32_t hooked_submit_flip(
     int32_t handle, int32_t bufferIndex,
     uint32_t flipMode, int64_t flipArg)
 {
-    /* One-shot notification: confirm submitFlip hook fires at all */
+    /* Track first flip for logging only (no popup) */
     if (!g_overlay.first_flip_logged) {
         g_overlay.first_flip_logged = true;
-        OrbisNotificationRequest nreq;
-        memset(&nreq, 0, sizeof(nreq));
-        nreq.type     = NotificationRequest;
-        nreq.targetId = -1;
-        nreq.userId   = -1;
-        snprintf(nreq.message, sizeof(nreq.message),
-            "FLIP: idx=%d has_cb=%d bufs=%d",
+        LOG_INFO("First flip: idx=%d has_cb=%d bufs=%d",
             bufferIndex, g_draw_callback != NULL,
             g_overlay.buffer_count);
-        sceKernelSendNotificationRequest(0, &nreq, sizeof(nreq), 0);
     }
 
     /* Record flip timestamp and buffer index */

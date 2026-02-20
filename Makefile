@@ -1,4 +1,4 @@
-# ─── Custom IME GoldHEN Plugin ───────────────────────────────────────
+# ─── ThumbGrid IME GoldHEN Plugin ────────────────────────────────────
 # Build with: make
 # Clean with: make clean
 #

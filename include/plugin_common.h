@@ -1,6 +1,6 @@
 /**
  * @file plugin_common.h
- * @brief Shared definitions for the Custom IME GoldHEN plugin
+ * @brief Shared definitions for the ThumbGrid IME GoldHEN plugin
  */
 
 #ifndef PLUGIN_COMMON_H
@@ -13,7 +13,7 @@
 
 /* ─── Plugin Identity ─────────────────────────────────────────────── */
 
-#define PLUGIN_NAME       "Custom IME"
+#define PLUGIN_NAME       "ThumbGrid IME"
 #define PLUGIN_DESC       "PSP-style cycling text input for PS4"
 #define PLUGIN_AUTH       "ealcon"
 #define PLUGIN_VER        0x00010000  /* 1.0.0 */
@@ -39,7 +39,7 @@
 
 #include <stdio.h>
 
-#define LOG_PREFIX "[CIME] "
+#define LOG_PREFIX "[TGIME] "
 
 #define LOG_INFO(fmt, ...)  \
     printf(LOG_PREFIX "INFO: " fmt "\n", ##__VA_ARGS__)

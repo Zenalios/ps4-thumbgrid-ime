@@ -4,7 +4,7 @@
 
 set -e
 
-echo "=== Custom IME Build Environment Check ==="
+echo "=== ThumbGrid IME Build Environment Check ==="
 echo ""
 
 # Check OO_PS4_TOOLCHAIN

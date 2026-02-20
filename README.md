@@ -1,4 +1,4 @@
-# PS4 Custom IME
+# PS4 ThumbGrid IME
 
 A custom Input Method Editor (IME) for PlayStation 4, replacing the system on-screen keyboard with a compact 3x3 grid interface controlled entirely via the DualShock 4 controller. Built as a [GoldHEN](https://github.com/GoldHEN/GoldHEN) plugin.
 
@@ -150,7 +150,7 @@ If you already have other plugins listed under `[default]`, just add the `thumbg
 
 ### 3. Reboot
 
-Reboot the PS4 (or restart the game). The custom IME will activate whenever a game opens a text input dialog.
+Reboot the PS4 (or restart the game). ThumbGrid IME will activate whenever a game opens a text input dialog.
 
 ## Architecture
 

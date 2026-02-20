@@ -1,6 +1,6 @@
 /**
  * @file main.c
- * @brief GoldHEN plugin entry point for Custom IME
+ * @brief GoldHEN plugin entry point for ThumbGrid IME
  */
 
 #include <stdint.h>
@@ -55,14 +55,14 @@ int module_start(size_t argc, const void *args) {
     int32_t rc = load_required_modules();
     if (rc != IME_OK) {
         LOG_ERROR("Failed to load required modules (rc=%d)", rc);
-        notify("Custom IME: module load FAILED (%d)", rc);
+        notify("%s: module load FAILED (%d)", PLUGIN_NAME, rc);
         return rc;
     }
 
     rc = ime_hook_install();
     if (rc != IME_OK) {
         LOG_ERROR("Failed to install IME hooks (rc=%d)", rc);
-        notify("Custom IME: hook install FAILED (%d)", rc);
+        notify("%s: hook install FAILED (%d)", PLUGIN_NAME, rc);
         return rc;
     }
 
@@ -89,7 +89,7 @@ int module_start(size_t argc, const void *args) {
         if (sovl_rc >= 0) break;
     }
     LOG_INFO("Plugin loaded successfully - IME hooks + overlay active");
-    notify("Custom IME v%d.%d.%d loaded",
+    notify("%s v%d.%d.%d loaded", PLUGIN_NAME,
         (PLUGIN_VER >> 16) & 0xFF,
         (PLUGIN_VER >> 8) & 0xFF,
         PLUGIN_VER & 0xFF);
