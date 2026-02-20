@@ -137,13 +137,16 @@ Replace `<PS4_IP>` with your PS4's IP address.
 
 ### 2. Enable the plugin
 
-Add the plugin to your GoldHEN plugin configuration:
+Add the plugin to the `[default]` section of `/data/GoldHEN/plugins.ini` on your PS4 so it loads for all games:
 
-```
+```ini
+; GoldHEN Plugins
+
+[default]
 /data/GoldHEN/plugins/custom_ime.prx
 ```
 
-in the file `/data/GoldHEN/plugins.ini` on your PS4.
+If you already have other plugins listed under `[default]`, just add the `custom_ime.prx` line alongside them. You can also load it for a specific game only by placing it under that game's title ID section (e.g. `[CUSA00001]`) instead.
 
 ### 3. Reboot
 
