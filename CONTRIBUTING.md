@@ -36,7 +36,7 @@ make clean && make
 ### Deploying for Testing
 
 ```bash
-curl -T bin/custom_ime.prx ftp://<PS4_IP>:2121/data/GoldHEN/plugins/
+curl -T bin/thumbgrid_ime.prx ftp://<PS4_IP>:2121/data/GoldHEN/plugins/
 curl -T shell-overlay/bin/shell_overlay.prx ftp://<PS4_IP>:2121/user/data/
 ```
 

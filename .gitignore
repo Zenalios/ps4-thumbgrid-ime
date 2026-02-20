@@ -1,8 +1,10 @@
 # Build artifacts
 build/
+bin/
 *.o
 *.elf
 *.oelf
+*.prx
 
 # Debug/log files
 *.txt

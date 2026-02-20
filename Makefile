@@ -20,7 +20,7 @@ endif
 
 # ─── Project ─────────────────────────────────────────────────────────
 
-PLUGIN_NAME := custom_ime
+PLUGIN_NAME := thumbgrid_ime
 
 # ─── Tools (system clang + OpenOrbis create-fself) ───────────────────
 

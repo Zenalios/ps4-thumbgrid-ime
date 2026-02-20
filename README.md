@@ -16,7 +16,7 @@ The input method is inspired by the on-screen keyboard from [PSPXTI](https://git
 
 The system consists of two PRX modules:
 
-- **`custom_ime.prx`** (game-side) — Hooks IME dialog functions, handles controller input, manages the text session, and writes state to shared memory.
+- **`thumbgrid_ime.prx`** (game-side) — Hooks IME dialog functions, handles controller input, manages the text session, and writes state to shared memory.
 - **`shell_overlay.prx`** (shell-side) — Runs inside `SceShellUI`, reads shared memory, and renders the visual overlay using Sony's PUI widget framework via the Mono runtime.
 
 ## Features
@@ -116,7 +116,7 @@ make clean && make
 ```
 
 This produces:
-- `bin/custom_ime.prx` — Game-side plugin
+- `bin/thumbgrid_ime.prx` — Game-side plugin
 - `shell-overlay/bin/shell_overlay.prx` — Shell-side overlay
 
 ## Installation
@@ -127,7 +127,7 @@ Connect to your PS4's FTP server (GoldHEN enables this):
 
 ```bash
 # Game-side plugin (auto-loaded by GoldHEN for all games)
-curl -T bin/custom_ime.prx ftp://<PS4_IP>:2121/data/GoldHEN/plugins/
+curl -T bin/thumbgrid_ime.prx ftp://<PS4_IP>:2121/data/GoldHEN/plugins/
 
 # Shell overlay (loaded into SceShellUI by the game-side plugin)
 curl -T shell-overlay/bin/shell_overlay.prx ftp://<PS4_IP>:2121/user/data/
@@ -143,10 +143,10 @@ Add the plugin to the `[default]` section of `/data/GoldHEN/plugins.ini` on your
 ; GoldHEN Plugins
 
 [default]
-/data/GoldHEN/plugins/custom_ime.prx
+/data/GoldHEN/plugins/thumbgrid_ime.prx
 ```
 
-If you already have other plugins listed under `[default]`, just add the `custom_ime.prx` line alongside them. You can also load it for a specific game only by placing it under that game's title ID section (e.g. `[CUSA00001]`) instead.
+If you already have other plugins listed under `[default]`, just add the `thumbgrid_ime.prx` line alongside them. You can also load it for a specific game only by placing it under that game's title ID section (e.g. `[CUSA00001]`) instead.
 
 ### 3. Reboot
 
@@ -157,7 +157,7 @@ Reboot the PS4 (or restart the game). The custom IME will activate whenever a ga
 ```
 Game Process                          SceShellUI Process
 +-----------------------+            +----------------------+
-| custom_ime.prx        |            | shell_overlay.prx    |
+| thumbgrid_ime.prx     |            | shell_overlay.prx    |
 |                       | file-backed|                      |
 | IME Dialog Hooks      |   mmap     | Mono Runtime Attach  |
 | Controller Input      | ---------> | PUI Widget Tree      |
