@@ -6,7 +6,7 @@ A custom Input Method Editor (IME) for PlayStation 4, replacing the system on-sc
 
 ![ThumbGrid Screenshot](ps4-thumbgrid-ime-screenshot.jpg)
 
-https://github.com/Zenalios/ps4-thumbgrid-ime/raw/main/ps4-thumbgrid-ime-demo.mp4
+[![ThumbGrid Demo](https://img.youtube.com/vi/ToKv49IK8tc/maxresdefault.jpg)](https://youtu.be/ToKv49IK8tc)
 
 ## Overview
 
